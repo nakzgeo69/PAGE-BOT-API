@@ -474,7 +474,7 @@
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
         <h3>Loading API Dashboard</h3>
-        <p>Fetching endpoints...</p>
+        <p>Fetching endpoints from server...</p>
     </div>
 
     <button class="mobile-menu-toggle" id="menuToggle"><i class="fas fa-bars"></i></button>
@@ -496,7 +496,7 @@
 
             <div class="content-header">
                 <h2>API Documentation</h2>
-                <p>Select an API from the sidebar, fill in parameters (UID, prompt, etc.) and test it instantly.</p>
+                <p>Select an API from the sidebar, fill in parameters and test it instantly.</p>
             </div>
 
             <div class="try-api-section" id="tryApiSection">
@@ -547,14 +547,6 @@
 
     <script>
         (function(){
-            // ---- Mock API data (no external fetch needed) ----
-            const mockApis = [
-                { id: 'api-1', name: 'Generate Content', category: 'AI Services', method: 'POST', route: '/api/generate', description: 'Generate content based on prompt and UID', usage: '/api/generate?uid=<user_id>&prompt=<your_prompt>' },
-                { id: 'api-2', name: 'User Profile', category: 'User', method: 'GET', route: '/api/user/profile', description: 'Get user profile by UID', usage: '/api/user/profile?uid=<user_id>' },
-                { id: 'api-3', name: 'Health Check', category: 'System', method: 'GET', route: '/api/health', description: 'Check API health status', usage: '/api/health' },
-                { id: 'api-4', name: 'Update Settings', category: 'User', method: 'PUT', route: '/api/user/settings', description: 'Update user settings (requires UID)', usage: '/api/user/settings?uid=<user_id>&theme=<dark|light>' }
-            ];
-
             // DOM refs
             const loadingOverlay = document.getElementById('loadingOverlay');
             const categoryNav = document.getElementById('categoryNav');
@@ -581,7 +573,7 @@
             const sideNav = document.getElementById('sideNav');
 
             let currentApi = null;
-            let allApis = mockApis;
+            let allApis = [];
 
             // ----- helpers -----
             function getMethodIcon(method) {
@@ -634,13 +626,37 @@
                 successMessage.classList.remove('show');
             }
 
+            // ----- FETCH REAL APIS FROM BACKEND -----
+            async function fetchApis() {
+                try {
+                    const response = await fetch('/api/list');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error('Failed to fetch APIs:', error);
+                    showError('Failed to load APIs from server. Make sure the backend is running.');
+                    return [];
+                }
+            }
+
             // ----- render navigation -----
             function renderCategoryNav(categories) {
                 let html = '';
-                for (const [cat, apis] of Object.entries(categories)) {
+                // Sort categories para mauna ang "ai"
+                const sortedCategories = Object.keys(categories).sort((a, b) => {
+                    if (a.toLowerCase() === 'ai' || a.toLowerCase() === 'ai services') return -1;
+                    if (b.toLowerCase() === 'ai' || b.toLowerCase() === 'ai services') return 1;
+                    return a.localeCompare(b);
+                });
+                
+                for (const cat of sortedCategories) {
+                    const apis = categories[cat];
                     html += `<div class="category"><div class="category-title"><span>${cat} (${apis.length})</span><i class="fas fa-chevron-right"></i></div><div class="api-list">`;
                     apis.forEach(api => {
-                        html += `<div class="nav-item" data-api-id="${api.id}">${getMethodIcon(api.method)} ${api.name}</div>`;
+                        html += `<div class="nav-item" data-api-id="${api.id || api.name}">${getMethodIcon(api.method)} ${api.name}</div>`;
                     });
                     html += `</div></div>`;
                 }
@@ -657,7 +673,7 @@
                         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
                         this.classList.add('active');
                         const id = this.dataset.apiId;
-                        const api = allApis.find(a => a.id === id);
+                        const api = allApis.find(a => (a.id || a.name) === id);
                         if (api) {
                             currentApi = api;
                             loadApiDetails(api);
@@ -676,7 +692,7 @@
                 emptyState.style.display = 'none';
                 tryApiSection.style.display = 'block';
                 const methodClass = `method-${api.method.toLowerCase()}`;
-                const params = parseQueryParameters(api.usage);
+                const params = parseQueryParameters(api.usage || '');
                 let paramsHTML = '';
                 if (params.length) {
                     paramsHTML = `<div class="api-info"><strong>Query Parameters:</strong><ul style="margin-left:20px;margin-top:5px;">`;
@@ -691,12 +707,12 @@
                             <h3>${getMethodIcon(api.method)} ${api.name}</h3>
                             <span class="method-badge ${methodClass}">${api.method}</span>
                         </div>
-                        <div class="api-info"><strong>Description:</strong> ${api.description}</div>
+                        <div class="api-info"><strong>Description:</strong> ${api.description || 'No description'}</div>
                         <div class="api-info"><strong>Route:</strong> <code>${api.route}</code></div>
                         <div class="api-info"><strong>Method:</strong> ${api.method}</div>
                         <div class="api-info"><strong>Category:</strong> ${api.category}</div>
                         ${paramsHTML}
-                        <div class="api-info"><strong>Usage:</strong> <code>${api.usage}</code></div>
+                        <div class="api-info"><strong>Usage:</strong> <code>${api.usage || 'No usage info'}</code></div>
                         <div class="api-info"><strong>Full URL:</strong> <code>${window.location.origin}${api.route}</code></div>
                     </div>
                 `;
@@ -719,15 +735,20 @@
                     getApiBtn.style.display = 'none';
                 }
 
-                const params = parseQueryParameters(api.usage);
+                const params = parseQueryParameters(api.usage || '');
                 let pHTML = '';
                 if (params.length) {
                     params.forEach(p => {
                         const placeholder = p.description || `Enter ${p.name}`;
+                        // Auto-fill default values for testing
+                        let defaultValue = '';
+                        if (p.name === 'prompt') defaultValue = 'Hello, how are you?';
+                        if (p.name === 'uid') defaultValue = '123';
+                        if (p.name === 'model') defaultValue = 'chatgpt4';
                         pHTML += `
                             <div class="param-row">
                                 <div class="param-label">${p.name}${p.required ? ' <span class="param-required">*</span>' : ''}</div>
-                                <input type="text" class="param-input" id="param-${p.name}" placeholder="${placeholder}" data-param="${p.name}" ${p.required ? 'required' : ''}>
+                                <input type="text" class="param-input" id="param-${p.name}" placeholder="${placeholder}" data-param="${p.name}" ${p.required ? 'required' : ''} value="${defaultValue}">
                             </div>
                         `;
                     });
@@ -748,7 +769,7 @@
             }
 
             function updateGetApiButton(api) {
-                const params = parseQueryParameters(api.usage);
+                const params = parseQueryParameters(api.usage || '');
                 let qs = [];
                 params.forEach(p => {
                     const inp = document.getElementById(`param-${p.name}`);
@@ -766,7 +787,7 @@
             }
 
             function buildUrlWithParams(api) {
-                const params = parseQueryParameters(api.usage);
+                const params = parseQueryParameters(api.usage || '');
                 let qs = [];
                 params.forEach(p => {
                     const inp = document.getElementById(`param-${p.name}`);
@@ -796,28 +817,59 @@
             }
 
             // ----- init -----
-            function init() {
-                // group by category
+            async function init() {
+                // Fetch real APIs from backend
+                const apiData = await fetchApis();
+                
+                if (apiData && apiData.length > 0) {
+                    allApis = apiData;
+                } else {
+                    // Fallback: use mock data if server is unreachable
+                    console.warn('Using fallback mock data');
+                    allApis = [
+                        { id: 'gpt4-1', name: 'GPT-4 Free', category: 'AI', method: 'GET', route: '/gpt4api', description: 'Free GPT-4 API - No API key needed', usage: '/gpt4api?prompt=Hello&model=chatgpt4' },
+                        { id: 'api-1', name: 'Generate Content', category: 'AI', method: 'POST', route: '/api/generate', description: 'Generate content based on prompt and UID', usage: '/api/generate?uid=<user_id>&prompt=<your_prompt>' },
+                        { id: 'api-2', name: 'User Profile', category: 'User', method: 'GET', route: '/api/user/profile', description: 'Get user profile by UID', usage: '/api/user/profile?uid=<user_id>' },
+                        { id: 'api-3', name: 'Health Check', category: 'System', method: 'GET', route: '/api/health', description: 'Check API health status', usage: '/api/health' }
+                    ];
+                }
+
+                // Group by category
                 const categories = {};
                 allApis.forEach(api => {
-                    if (!categories[api.category]) categories[api.category] = [];
-                    categories[api.category].push(api);
+                    const cat = api.category || 'Uncategorized';
+                    if (!categories[cat]) categories[cat] = [];
+                    categories[cat].push(api);
                 });
+                
                 renderCategoryNav(categories);
                 renderStats(allApis);
 
                 if (allApis.length) {
-                    const first = allApis[0];
-                    currentApi = first;
-                    loadApiDetails(first);
-                    updateTryApiSection(first);
-                    document.querySelector('.nav-item')?.classList.add('active');
-                    document.querySelector('.category')?.classList.add('active');
+                    // Find GPT-4 API first, or use first API
+                    let firstApi = allApis.find(a => a.name.toLowerCase().includes('gpt') || a.name.toLowerCase().includes('chatgpt'));
+                    if (!firstApi) firstApi = allApis[0];
+                    
+                    currentApi = firstApi;
+                    loadApiDetails(firstApi);
+                    updateTryApiSection(firstApi);
+                    
+                    // Find and activate the nav item
+                    const navItems = document.querySelectorAll('.nav-item');
+                    navItems.forEach(item => {
+                        if (item.dataset.apiId === (firstApi.id || firstApi.name)) {
+                            item.classList.add('active');
+                        }
+                    });
+                    
+                    // Open first category
+                    const firstCategory = document.querySelector('.category');
+                    if (firstCategory) firstCategory.classList.add('active');
                 }
                 setTimeout(() => loadingOverlay.classList.add('hidden'), 400);
             }
 
-            // ----- try API button -----
+            // ----- try API button (REAL FETCH) -----
             tryApiBtn.addEventListener('click', async function() {
                 if (!currentApi) { showError('Select an API first.'); return; }
                 const original = this.innerHTML;
@@ -838,41 +890,30 @@
 
                 try {
                     const start = Date.now();
-                    // Mock fetch: simulate random response
-                    const mockResponse = {
-                        ok: true,
-                        status: 200,
-                        json: async () => ({ 
-                            success: true, 
-                            data: { 
-                                uid: document.getElementById('param-uid')?.value || '123',
-                                prompt: document.getElementById('param-prompt')?.value || 'hello world',
-                                result: '✅ API test successful (mock)',
-                                timestamp: new Date().toISOString()
-                            }
-                        }),
-                        text: async () => '✅ API test successful (mock)'
-                    };
-                    // Simulate network delay
-                    await new Promise(r => setTimeout(r, 300 + Math.random()*400));
-                    const resp = mockResponse;
+                    const response = await fetch(url, options);
                     const end = Date.now();
+                    
                     let data;
-                    try {
-                        data = await resp.json();
-                    } catch { data = await resp.text(); }
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        data = await response.json();
+                    } else {
+                        data = await response.text();
+                    }
+                    
                     const formatted = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
                     responseContent.textContent = formatted;
                     responseTime.textContent = (end - start) + 'ms';
                     responseSize.textContent = formatBytes(new Blob([formatted]).size);
-                    responseStatus.textContent = resp.status;
-                    responseStatus.style.color = resp.ok ? '#2e7d32' : '#c62828';
+                    responseStatus.textContent = response.status;
+                    responseStatus.style.color = response.ok ? '#2e7d32' : '#c62828';
                     responseContainer.classList.add('show');
-                    if (resp.ok) showSuccess('API test successful!');
-                    else showError('API test failed with status: ' + resp.status);
+                    
+                    if (response.ok) showSuccess('API test successful!');
+                    else showError('API test failed with status: ' + response.status);
                 } catch (err) {
                     showError('API test error: ' + err.message);
-                    responseContent.textContent = 'Error: ' + err.message;
+                    responseContent.textContent = 'Error: ' + err.message + '\n\nURL: ' + fullUrl;
                     responseContainer.classList.add('show');
                 } finally {
                     this.innerHTML = original;

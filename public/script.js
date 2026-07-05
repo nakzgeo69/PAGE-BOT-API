@@ -28,16 +28,64 @@ let currentApi = null;
 let allApis = [];
 let categories = {};
 
-// Initialize the application
+// ============================================================
+// MOCK API DATA (para hindi na kailangan ng server)
+// ============================================================
+const mockApiData = [
+    {
+        id: 'api-1',
+        name: 'Generate Content',
+        category: 'AI Services',
+        method: 'POST',
+        route: '/api/generate',
+        description: 'Generate content based on prompt and UID',
+        usage: '/api/generate?uid=<user_id>&prompt=<your_prompt>'
+    },
+    {
+        id: 'api-2',
+        name: 'User Profile',
+        category: 'User',
+        method: 'GET',
+        route: '/api/user/profile',
+        description: 'Get user profile by UID',
+        usage: '/api/user/profile?uid=<user_id>'
+    },
+    {
+        id: 'api-3',
+        name: 'Health Check',
+        category: 'System',
+        method: 'GET',
+        route: '/api/health',
+        description: 'Check API health status',
+        usage: '/api/health'
+    },
+    {
+        id: 'api-4',
+        name: 'Update Settings',
+        category: 'User',
+        method: 'PUT',
+        route: '/api/user/settings',
+        description: 'Update user settings (requires UID)',
+        usage: '/api/user/settings?uid=<user_id>&theme=<dark|light>'
+    },
+    {
+        id: 'api-5',
+        name: 'Delete Account',
+        category: 'User',
+        method: 'DELETE',
+        route: '/api/user/delete',
+        description: 'Delete user account by UID',
+        usage: '/api/user/delete?uid=<user_id>'
+    }
+];
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
 async function init() {
     try {
-        // Load API data from server
-        const response = await fetch('/api/list');
-        if (!response.ok) {
-            throw new Error(`Failed to load APIs: ${response.status}`);
-        }
-        
-        allApis = await response.json();
+        // Use mock data instead of fetching from server
+        allApis = mockApiData;
         
         // Group APIs by category
         categories = {};
@@ -48,10 +96,8 @@ async function init() {
             categories[api.category].push(api);
         });
         
-        // Render category navigation
+        // Render everything
         renderCategoryNav(categories);
-        
-        // Render stats
         renderStats(allApis, categories);
         
         // Load first API by default
@@ -84,13 +130,17 @@ async function init() {
                 <i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 20px;"></i>
                 <h3>Failed to Load Dashboard</h3>
                 <p>${error.message}</p>
-                <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer;">
+                <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4361ee; color: white; border: none; border-radius: 5px; cursor: pointer;">
                     <i class="fas fa-redo"></i> Retry
                 </button>
             </div>
         `;
     }
 }
+
+// ============================================================
+// RENDER FUNCTIONS
+// ============================================================
 
 // Render category navigation
 function renderCategoryNav(categories) {
@@ -170,7 +220,7 @@ function renderStats(commands, categories) {
     };
     
     commands.forEach(cmd => {
-        if (methodCounts[cmd.method]) {
+        if (methodCounts[cmd.method] !== undefined) {
             methodCounts[cmd.method]++;
         }
     });
@@ -272,6 +322,10 @@ function loadApiDetails(apiId) {
     apiList.innerHTML = apiHTML;
 }
 
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
 // Parse query parameters from usage string
 function parseQueryParameters(usage) {
     const params = [];
@@ -298,6 +352,8 @@ function parseQueryParameters(usage) {
                 isRequired = true;
                 const paramName = value.slice(1, -1).replace(/_/g, ' ');
                 description = `Required. ${paramName.charAt(0).toUpperCase() + paramName.slice(1)}`;
+            } else {
+                description = `Optional. Example: ${value}`;
             }
             
             params.push({
@@ -311,6 +367,35 @@ function parseQueryParameters(usage) {
     
     return params;
 }
+
+// Get icon for HTTP method
+function getMethodIcon(method) {
+    const icons = {
+        'GET': 'fas fa-download',
+        'POST': 'fas fa-plus-circle',
+        'PUT': 'fas fa-edit',
+        'DELETE': 'fas fa-trash',
+        'PATCH': 'fas fa-pen'
+    };
+    return `<i class="${icons[method] || 'fas fa-code'}"></i>`;
+}
+
+// Format bytes to human readable format
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// ============================================================
+// UI UPDATE FUNCTIONS
+// ============================================================
 
 // Update the Try API section
 function updateTryApiSection(api) {
@@ -361,6 +446,20 @@ function updateTryApiSection(api) {
         
         queryParamsContainer.innerHTML = paramsHTML;
         queryParamsSection.classList.add('show');
+        
+        // Add input listeners to update GET URL
+        document.querySelectorAll('.param-input').forEach(input => {
+            input.addEventListener('input', function() {
+                if (currentApi) {
+                    updateGetApiButton(currentApi);
+                }
+            });
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    tryApiBtn.click();
+                }
+            });
+        });
     } else {
         queryParamsContainer.innerHTML = '<p class="no-params">No query parameters needed for this endpoint.</p>';
         queryParamsSection.classList.remove('show');
@@ -373,17 +472,45 @@ function updateTryApiSection(api) {
     hideMessages();
 }
 
-// Get icon for HTTP method
-function getMethodIcon(method) {
-    const icons = {
-        'GET': 'fas fa-download',
-        'POST': 'fas fa-plus-circle',
-        'PUT': 'fas fa-edit',
-        'DELETE': 'fas fa-trash',
-        'PATCH': 'fas fa-pen'
-    };
-    return `<i class="${icons[method] || 'fas fa-code'}"></i>`;
+// Update GET API button URL with parameters
+function updateGetApiButton(api) {
+    const urlWithParams = buildUrlWithParams(api);
+    const fullUrl = `${window.location.origin}${urlWithParams}`;
+    
+    // Update the GET button
+    getApiBtn.href = fullUrl;
+    fullApiUrl.textContent = fullUrl;
 }
+
+// Build URL with query parameters
+function buildUrlWithParams(api) {
+    let url = api.route;
+    
+    // Add query parameters if they exist
+    const queryParams = parseQueryParameters(api.usage);
+    const queryStrings = [];
+    
+    queryParams.forEach(param => {
+        const input = document.getElementById(`param-${param.name}`);
+        if (input && input.value.trim()) {
+            queryStrings.push(`${param.name}=${encodeURIComponent(input.value.trim())}`);
+        } else if (param.required) {
+            // For required parameters with no value, use "example" as default
+            queryStrings.push(`${param.name}=example`);
+        }
+    });
+    
+    // Add query string if there are parameters
+    if (queryStrings.length > 0) {
+        url += '?' + queryStrings.join('&');
+    }
+    
+    return url;
+}
+
+// ============================================================
+// MESSAGE FUNCTIONS
+// ============================================================
 
 // Show error message
 function showError(message) {
@@ -409,41 +536,73 @@ function hideMessages() {
     successMessage.classList.remove('show');
 }
 
-// Build URL with query parameters
-function buildUrlWithParams(api) {
-    let url = api.route;
+// ============================================================
+// MOCK API TEST FUNCTION (para hindi na kailangan ng totoong server)
+// ============================================================
+async function mockApiTest(api, url) {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
     
-    // Add query parameters if they exist
-    const queryParams = parseQueryParameters(api.usage);
-    const queryStrings = [];
-    
-    queryParams.forEach(param => {
-        const input = document.getElementById(`param-${param.name}`);
-        if (input && input.value.trim()) {
-            queryStrings.push(`${param.name}=${encodeURIComponent(input.value.trim())}`);
-        } else if (param.required) {
-            // For required parameters with no value, use a placeholder
-            queryStrings.push(`${param.name}=example`);
-        }
+    // Get parameter values for display
+    const params = parseQueryParameters(api.usage);
+    const paramValues = {};
+    params.forEach(p => {
+        const input = document.getElementById(`param-${p.name}`);
+        paramValues[p.name] = input ? input.value.trim() || 'example' : 'example';
     });
     
-    // Add query string if there are parameters
-    if (queryStrings.length > 0) {
-        url += '?' + queryStrings.join('&');
+    // Generate mock response based on API
+    let mockData = {
+        success: true,
+        message: 'API test successful (mock)',
+        endpoint: api.route,
+        method: api.method,
+        timestamp: new Date().toISOString(),
+        parameters: paramValues
+    };
+    
+    // Add specific data based on API
+    if (api.id === 'api-1') {
+        mockData.data = {
+            uid: paramValues.uid || '123',
+            prompt: paramValues.prompt || 'Hello world',
+            result: 'Generated content based on your prompt and UID'
+        };
+    } else if (api.id === 'api-2') {
+        mockData.data = {
+            uid: paramValues.uid || '123',
+            name: 'John Doe',
+            email: 'john@example.com',
+            role: 'user'
+        };
+    } else if (api.id === 'api-3') {
+        mockData.status = 'healthy';
+        mockData.uptime = '99.9%';
+    } else if (api.id === 'api-4') {
+        mockData.data = {
+            uid: paramValues.uid || '123',
+            theme: paramValues.theme || 'dark',
+            updated: true
+        };
+    } else if (api.id === 'api-5') {
+        mockData.data = {
+            uid: paramValues.uid || '123',
+            deleted: true,
+            message: 'Account deleted successfully'
+        };
     }
     
-    return url;
+    return {
+        ok: true,
+        status: 200,
+        json: async () => mockData,
+        text: async () => JSON.stringify(mockData, null, 2)
+    };
 }
 
-// Update GET API button URL with parameters
-function updateGetApiButton(api) {
-    const urlWithParams = buildUrlWithParams(api);
-    const fullUrl = `${window.location.origin}${urlWithParams}`;
-    
-    // Update the GET button
-    getApiBtn.href = fullUrl;
-    fullApiUrl.textContent = fullUrl;
-}
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
 
 // Try API button click handler
 tryApiBtn.addEventListener('click', async function() {
@@ -464,36 +623,22 @@ tryApiBtn.addEventListener('click', async function() {
     // Update displayed URL
     fullApiUrl.textContent = fullUrl;
     
-    // Prepare request options
-    const requestOptions = {
-        method: currentApi.method,
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    };
-    
-    // For POST, PUT, PATCH methods, add a sample body
-    if (['POST', 'PUT', 'PATCH'].includes(currentApi.method)) {
-        requestOptions.body = JSON.stringify({
-            sample: 'data',
-            timestamp: new Date().toISOString()
-        });
-    }
-    
     try {
         const startTime = Date.now();
-        const response = await fetch(url, requestOptions);
+        
+        // Use mock API test instead of real fetch
+        const response = await mockApiTest(currentApi, url);
+        
         const endTime = Date.now();
         
-        // Calculate response time and size
+        // Calculate response time
         const responseTimeMs = endTime - startTime;
         let responseData;
         
-        // Try to parse response as JSON
+        // Parse response
         try {
             responseData = await response.json();
         } catch (e) {
-            // If not JSON, get as text
             responseData = await response.text();
         }
         
@@ -544,26 +689,6 @@ tryApiBtn.addEventListener('click', async function() {
     }
 });
 
-// Update GET button when parameters change
-queryParamsContainer.addEventListener('input', function() {
-    if (currentApi) {
-        updateGetApiButton(currentApi);
-    }
-});
-
-// Format bytes to human readable format
-function formatBytes(bytes, decimals = 2) {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-    
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
-
 // Mobile menu toggle
 menuToggle.addEventListener('click', function() {
     sideNav.classList.toggle('active');
@@ -587,13 +712,6 @@ document.addEventListener('click', function(event) {
             menuToggle.innerHTML = '<i class="fas fa-bars"></i>';
             menuToggle.classList.remove('active');
         }
-    }
-});
-
-// Allow Enter key to submit parameter inputs
-queryParamsContainer.addEventListener('keypress', function(event) {
-    if (event.key === 'Enter') {
-        tryApiBtn.click();
     }
 });
 

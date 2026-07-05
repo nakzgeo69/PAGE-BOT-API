@@ -1,6 +1,6 @@
 // api/gpt4.js
 // Free GPT-4 API - Compatible with Render.com
-// No API key required - Uses free public APIs
+// No API key required - Uses free public APIs with fallback
 
 module.exports = {
     name: "GPT-4 Free",
